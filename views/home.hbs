@@ -1,0 +1,32 @@
+<form method="POST" action="/results">
+
+    <div id="searchBox">
+        <div id="lookingForTitle">I'm looking for parks near:</div>
+        <br>
+        <input id="locationInput" name="place" placeholder="Suburb, name or address..." required>
+    </div>
+
+    {{#if error}}
+        <p id="errorMessage">{{error}}</p>
+    {{/if}}
+
+    <div id="timeBox">
+        <div id="betweenTimesTitle">Between the times:</div>
+        <br>
+        <div id="timeInputsBox">
+            <input class="timeInput" type="time" name="arriveTime" value={{{arriveTime}}}>
+            <div id="toText">to</div>
+            <input class="timeInput" type="time" name="leaveTime" value={{{leaveTime}}}>
+        </div>
+        <br>
+        <input id="dateInput" type="date" name="date" value={{{date}}}>
+
+        <button id="searchButton" type="submit">
+            <img src="images/search.png" width="60" height="60">
+        </button>
+    </div>
+
+    <div id="skylineImage">
+        <img src="images/skyline.png" width="100%" height="145">
+    </div>
+</form>

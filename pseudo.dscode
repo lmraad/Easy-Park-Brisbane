@@ -1,0 +1,312 @@
+///////////////////////////////////////////////////////////////////////
+//This function reads data from an uploaded csv file, and inserts it //
+//into the database.                                                 //
+///////////////////////////////////////////////////////////////////////
+
+FUNCTION UPLOAD()
+BEGIN
+
+    DECLARE file = file data from POST REQUEST
+
+    STORE file AS filename(
+        './uploads/newData.csv',
+        FUNCTION (err)
+        BEGIN
+            IF err THEN
+                PRINT err
+            ELSE
+                //ASSIGNMENT is demonstrated below, as variables 'data'
+                //and 'dataLines' are created, in order to store
+                //information about the inputted data as a string, then
+                //as an array. Additionally, the SQL query which will be
+                //used to insert the data into the database is contained
+                //in another variable created, named 'sql'.
+
+                //Reading and preparing the data
+                DECLARE data = INPUT FROM FILE("./uploads/newData.csv", "utf-8")
+                DECLARE dataLines = data SPLIT ON newline
+                DECLARE sql =
+                    "INSERT INTO PREDICTIONS
+                    (MOBILE_ZONE, DATE, HOUR, OCCUPANCY_PRED)
+                    VALUES (?,?,?,?)"
+
+                //Inserting the data into the database
+                BEGIN SQL TRANSACTION
+
+                //ITERATION is demonstrated below, as a 'for' loop is
+                //used to separate each individual line of data, and
+                //insert it into the database.
+
+                FOR i = 1 TO dataLines LENGTH STEP 1
+                    DECLARE line = dataLines[i] SPLIT ON comma
+
+                    IF line LENGTH !== 4 THEN
+                        CONTINUE
+                    ENDIF
+
+                    RUN SQL PREPARED STATEMENT sql WITH VALUES line
+                NEXT i
+                ENDFOR
+
+                END SQL TRANSACTION
+
+            ENDIF
+        END
+    )
+
+END
+
+
+///////////////////////////////////////////////////////////////////////
+//This function calculates the price of parking in a location for a  //
+//certain amount of time, and will be called for every parking space //
+//which is a result of a user's search.                              //
+///////////////////////////////////////////////////////////////////////
+
+//The variables 'meterID', 'arriveTime', 'leaveTime', 'date',
+//and 'vehicle' exist, which contain the selected parking meter's ID, the user's
+//inputted arrival time, leaving time, date and vehicle type, respectively.
+
+//Date is formatted as a date variable
+//Times are formatted as HH:MM in 24-hour time
+
+FUNCTION PRICECALC(meterID, arriveTime, leaveTime, date, vehicle)
+BEGIN
+
+    //Determining whether the time inputs are valid
+    //(the function RENDERHOME renders the home page again)
+    IF leaveTime <= arriveTime THEN
+        DECLARE error = "Invalid time input."
+        RENDERHOME(error)
+        RETURN
+    ENDIF
+    
+    //Converting the times into numbers, so that operations
+    //can be performed on them
+    arriveTime = arriveTime.replace(":", '')
+    leaveTime = leaveTime.replace(":", '')
+
+    //Retrieving data
+    DECLARE costInfo =
+        SQL RESULT FROM
+            "SELECT MOBILE_ZONES.TAR_RATE_WEEKDAY, MOBILE_ZONES.TAR_RATE_AH_WE, MOBILE_ZONES.MC_RATE
+            FROM METERS
+            JOIN MOBILE_ZONES ON MOBILE_ZONES.ZONE = METERS.MOBILE_ZONE
+            WHERE METERS.METER_NO = ?"
+        WITH PREPARED QUERY VALUE meterID
+
+    DECLARE openTimes =
+        SQL RESULT FROM
+            "SELECT TIMES.DAYS, TIMES.START, TIMES.END
+            FROM METER_TIMES
+            JOIN TIMES ON TIMES.ID = METER_TIMES.TIME_ID
+            WHERE METER_TIMES.METER_NO = ?"
+        WITH PREPARED QUERY VALUE meterID
+
+    DECLARE cost = 0
+    DECLARE day = date.getDay()
+
+    //Determining how much time will be spent in the parking space
+    //while it is operational, by looping through each of the parking
+    //space's open time slots
+    FOR i = 0 TO openTimes LENGTH STEP 1
+
+        //If it is the correct day for the time slot
+        IF (openTimes[i].DAYS = "SAT-SUN" AND (day=0 OR day=6)) OR (openTimes[i].DAYS = "MON-FRI" AND (1<=day<=5)) THEN
+            //Determining the number of hours in the time slot
+            DECLARE openSlot = openTimes[i].END - openTimes[i].START
+            //BELOW MEANS: if the openSlot is not a round hour AND
+            //the hour of (the openTime end - the openTime start minutes) DOES NOT EQUAL
+            //the hour of the openTime end... minus 40.
+            //(because this suggests the minutes are causing a change in hour,
+            //so won't take the fact that there are 60min in 1h, not 100min, into account)
+            IF openSlot%100 !== 0 AND (Math.floor((openTimes[i].END-(openTimes[i].START%100))/100) !== Math.floor(openTimes[i].END/100)) THEN
+                openSlot = openSlot - 40
+            ENDIF
+
+            //MODULARISATION is demonstrated below, as one function is
+            //called multiple times, in order to calculate the number of
+            //hours a user will be parked within different specified
+            //time slots.
+
+            //Finding the number of operational meter hours the user
+            //will be parking, from the start of their parking time
+            //to the time that the meter closes
+            DECLARE startDiff = openTimes[i].END - arriveTime
+            DECLARE startHours = OPERATIONALHOURS(openSlot, startDiff, openTimes[i].END, arriveTime)
+
+            //Finding the number of operational meter hours the user
+            //will be parking, from the time that the meter opens
+            //to the end of their parking time
+            DECLARE endDiff = leaveTime - openTimes[i].START
+            DECLARE endHours = OPERATIONALHOURS(openSlot, endDiff, leaveTime, openTimes[i].START)
+
+            //Finding the total hours parked while the meter is
+            //operational
+            DECLARE totalHours = Math.ceil(((startHours + endHours) - openSlot)/100)
+            IF totalHours < 0 THEN
+                totalHours = 0
+            ENDIF
+
+            //Finding how many of those hours are 7pm-10pm (after hour)
+            DECLARE AHStartDiff = 2200 - arriveTime
+            DECLARE AHStartHours = OPERATIONALHOURS(300, AHStartDiff, 2200, arriveTime)
+
+            DECLARE AHEndDiff = leaveTime - 1900
+            DECLARE AHEndHours = OPERATIONALHOURS(300, AHEndDiff, leaveTime, 1900)
+
+            DECLARE AHTotalHours = Math.ceil(((AHStartHours + AHEndHours) - 300)/100)
+            IF AHTotalHours < 0 OR openTimes[i].END <= 1900 OR openTimes[i].START >= 2200 OR totalHours === 0 THEN
+                AHTotalHours = 0
+            ENDIF
+
+            //Calculating the costs based on the determined hours of stay
+            IF vehicle = "motorcycle" THEN
+                cost = cost + (totalHours * costInfo[0].MC_RATE)
+            ELSE IF day = 0 OR day = 6 THEN
+                cost = cost + (totalHours * costInfo[0].TAR_RATE_AH_WE)
+            ELSE
+                IF AHTotalHours > 0 && costInfo[0].TAR_RATE_AH_WE !== '' THEN
+                    cost = cost + (AHTotalHours * costInfo[0].TAR_RATE_AH_WE)
+                    totalHours = totalHours - AHTotalHours
+                ENDIF
+                cost = cost + (totalHours * costInfo[0].TAR_RATE_WEEKDAY)
+            ENDIF
+
+        ENDIF
+
+    NEXT i
+    ENDFOR
+
+    //Taking into account the max charge cap
+    DECLARE maxCapChg =
+        SQL RESULT FROM
+            "SELECT METER_NO, MAX_CAP_CHG
+            FROM METERS
+            WHERE METER_NO = ?"
+        WITH PREPARED QUERY VALUE meterID
+
+    IF maxCapChg[0].MAX_CAP_CHG !== '' THEN
+        IF maxCapChg[0].MAX_CAP_CHG < cost THEN
+            cost = maxCapChg[0].MAX_CAP_CHG
+        ENDIF
+    ENDIF
+
+    RETURN cost
+END
+
+//Returns how many hours of 'diff' are within the operational 'timeSlot'
+//Also diff = a-b
+FUNCTION OPERATIONALHOURS (timeSlot, diff, a, b)
+BEGIN
+
+    //Once again considering that there are 60min in 1h, not 100min
+    IF diff%100 !== 0 AND (Math.floor((a-(b%100))/100) !== Math.floor(a/100)) THEN
+        diff = diff - 40
+    ENDIF
+
+    //CONDITION is demonstrated below, as an 'if else'
+    //statement is used to determine whether the arrival
+    //time will be after the time slot ends, or the leaving
+    //time will be before the time slot begins (with both
+    //cases causing 'diff' to be negative), as these would
+    //mean that the user does not park for any time during
+    //the specified time slot. If true, the large negative
+    //number of -24 hours is returned, so that even after
+    //being added to other values, it can be recognised that
+    //the user would not park for any hours during the
+    //specified time slot.
+
+    IF diff <= 0 THEN
+        RETURN -2400
+    ELSE
+        IF timeSlot - diff <= 0 THEN
+            RETURN timeSlot
+        ELSE
+            RETURN diff
+        ENDIF
+    ENDIF
+END
+
+///////////////////////////////////////////////////////////////////////
+//This function filters parking locations, so they can be presented  //
+//on the map.                                                        //
+///////////////////////////////////////////////////////////////////////
+
+//The variables 'parkTime', 'searchLong', 'searchLat', 'vehicle',
+//and 'paymentMethod' exist, which contain the selected parking meter's ID,
+//the amount of time the user wants to park for in 24-hour HHMM format, the
+//searched location's longitude and latitude, the user's vehicle, and their
+//preferred payment method, respectively.
+
+//These variables will be determined after the user sends their searched
+//location, parking times and date to the server via POST request.
+//Through the use of an API, the searched location's longitude and
+//latitude coordinates will first be found. An algorithm will then be used
+//to determine the parkTime, based on the entered arrival and leave times.
+//Finally, the vehicle will default to "car/truck", and paymentMethod to
+//"mobile app", however these can be changed by the user by applying
+//filters, after which the page will reload. The user can therefore filter
+//by multiple characteristics at once. The server will then send these
+//variables though to this function to be processed, and have the list of
+//results returned.
+
+FUNCTION FILTER(parkTime, searchLong, searchLat, vehicle, paymentMethod)
+BEGIN
+
+    DECLARE results =
+        SQL RESULT FROM
+            "SELECT METER_NO, STREET, LONGITUDE, LATITUDE, VEH_BAYS, MC_BAYS, CATEGORY
+            FROM METERS"
+
+    //Adding loading zones to the results if the
+    //user is parking for 20min or less
+    IF parkTime <= 20 THEN
+        DECLARE loadingResults =
+            SQL RESULT FROM
+                "SELECT ID, LONGITUDE, LATITUDE, STREET
+                FROM LOADING_ZONES"
+        
+        FOR i = 0 TO loadingResults LENGTH STEP 1
+            PUSH loadingResults[i] into results
+        NEXT i
+        ENDFOR
+    ENDIF
+
+    //Filtering the results
+    FOR i = results LENGTH TO 0 STEP -1
+
+        //SELECTION is successfully demonstrated below, due to the many
+        //possible pathways which the program can follow, depending on the
+        //nature of the implemented filters.
+
+        //SEQUENCE is also demonstrated, as a set of instructions is
+        //presented which must be followed in order. This is because
+        //the vehicle type and payment method filters must be implemented
+        //first, even if this will result in having less than 3 results,
+        //because the user would want to see the exact number of parking
+        //spaces which suit their applied filters. The proximity should
+        //then be checked after the length of the results, as the user
+        //would not want to be presented with 0 results if there were some
+        //available, just a little further away.
+
+        IF vehicle = "motorcycle" AND results[i].MC_BAYS = 0 THEN
+            SPLICE results(i, 1)
+        ELSE IF vehicle = "car" AND results[i].VEH_BAYS = 0 THEN
+            SPLICE results(i, 1)
+        ELSE IF paymentMethod = "card" AND results[i].CATEGORY = "PAY BY MOBILE APP ONLY " THEN
+            SPLICE results(i, 1)
+        ELSE IF results LENGTH < 4 THEN
+            CONTINUE
+        ELSE IF Math.abs(results[i].LONGITUDE - searchLong) > 0.0045 THEN
+            SPLICE results(i, 1)
+        ELSE IF Math.abs(results[i].LATITUDE - searchLat) > 0.0045 THEN
+            SPLICE results(i, 1)
+        ENDIF
+
+    NEXT i
+    ENDFOR
+
+    RETURN results
+
+END

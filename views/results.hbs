@@ -1,0 +1,146 @@
+<!-- This inports the plotly.js library from a Content Distribution Network (cdn) -->
+<script src="https://cdn.plot.ly/plotly-2.12.1.min.js"></script>
+
+<form method="POST" action="/">
+    <button id="backToSearchArrow" type="submit">
+        <b>← Back to search</b>
+    </button>
+</form>
+
+<!-- This creates the target div where the map will be shown selected="selected"-->
+<div id="map"></div>
+
+<div id="inputsBox">
+    <form method="POST" action="/results">
+        <div id="sortByBox">
+            <div id="sortByTitle">Sort By:</div>
+            <div id="sortByDropdown">
+                <select id="sortBy" name="sortBy">
+                    <option value="distance">Distance</option>
+                    <option value="occupancy">Predicted Availability</option>
+                    <option value="cost">Cost</option>
+                </select>
+                <button id="submitSortBy" type="submit">Go</button>
+            </div>
+        </div>
+    </form>
+
+    <div class="filterBtn">
+        <button class="openButton" onclick="openForm()">
+            <img src="images/filter.png" width="50" height="44.445">
+        </button>
+    </div>
+</div>
+
+<div class="filterPopup">
+    <div class="formPopup" id="popupForm">
+        <form method="POST" action="/results" class="formContainer">
+            <button type="button" class="cancel" onclick="closeForm()">x</button>
+            <p id="filtersTitle"><b>Filters</b></p>
+
+            <div id="filterInputsBox">
+                <div class="filterInputs">
+                    <label class="filterType" for="vehicleType">
+                        Vehicle Type:
+                    </label>
+                    <br>
+                    <select id="vehicleType" name="vehicle">
+                        <option value="car">Car</option>
+                        <option value="motorcycle">Motorcycle</option>
+                    </select>
+                </div>
+
+                <div class="filterInputs">
+                    <label class="filterType" for="paymentMethod">
+                        Preferred Payment Method:
+                    </label>
+                    <br>
+                    <select id="paymentMethod" name="paymentMethod" value="{{paymentMethod}}">
+                        <option value="mobile">Mobile App</option>
+                        <option value="card">Card</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" class="btn" onclick="closeForm()">Save</button>
+        </form>
+    </div>
+</div>
+
+<table id="resultsTable">
+    {{#each sortedResults}}
+        <tr><form method="POST" action="/parkInfo">
+            <input name="parkID" value="{{this.ID}}" hidden>
+            <input name="parkOcc" value="{{this.OCCUPANCY}}" hidden>
+            <input name="parkCost" value="{{this.COST}}" hidden>
+            <td>
+                <button id="submitButton" type="Submit" class="button">
+                    <div id="streetName"><b>{{this.STREET}}</b></div>
+                    <div id="type">{{this.TYPE}}</div><br>
+                    <div id="occupancyPred">{{this.OCCUPANCY}}</div>
+                </button>
+            </td>
+            <th>
+                {{this.COST}}
+            </th>
+        </form></tr>
+    {{/each}}
+</table>
+
+<script>
+
+    /////////////////////////////DROPDOWN DEFAULTS///////////////////////////////////
+    let sortByDiv = document.getElementById("sortBy")
+    sortByDiv.value = "{{sortBy}}"
+
+    let vehicleDiv = document.getElementById("vehicleType")
+    vehicleDiv.value = "{{vehicle}}"
+
+    let paymentDiv = document.getElementById("paymentMethod")
+    paymentDiv.value = "{{paymentMethod}}"
+
+    //////////////////////////////////FILTERS///////////////////////////////////////
+    function openForm() {
+        document.getElementById("popupForm").style.display = "block"
+    }
+    function closeForm() {
+        document.getElementById("popupForm").style.display = "none"
+    }
+
+    /////////////////////////////////////MAP/////////////////////////////////////////
+    //these arrays could be imported into a hbs file...
+    let labelsArray = {{{titles}}}
+    let longitudeArray = [{{{longitudes}}}]
+    let latitudeArray = [{{{latitudes}}}]
+
+    //define the type of map or graph the plotly should generate
+    let data = [{
+        type: "scattermapbox",
+        hoverinfo: "text",  //text here refers to the key/value on the next line -- comment this to 'skip' if you don't want hovertext
+        text: labelsArray,
+        lon: longitudeArray,
+        lat: latitudeArray,
+        marker: { color: "rgb(0, 140, 255)", size: 20 }
+    }];
+
+    let layout = {
+        mapbox: {
+            style: "open-street-map",
+            center: {
+                lon: {{{centreLong}}},
+                lat: {{{centreLat}}}
+            },
+            zoom: {{{centreZoom}}}
+        },
+        margin: {
+            l: 0,
+            r: 0,
+            b: 0,
+            t: 0
+        }
+    };
+
+    //execute the plot
+    Plotly.newPlot('map', data, layout)
+
+</script>

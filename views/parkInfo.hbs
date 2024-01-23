@@ -1,0 +1,132 @@
+<!-- This inports the plotly.js library from a Content Distribution Network (cdn) -->
+<script src="https://cdn.plot.ly/plotly-2.12.1.min.js"></script>
+
+<!-- This creates the target div where the map will be shown selected="selected"-->
+<div id="map"></div>
+
+<form method="POST" action="/results">
+    <button id="backToListArrow" type="submit">
+        <b>← Back to list</b>
+    </button>
+</form>
+
+<div id="infoTable">
+    <div id="parkStreet">
+        {{info.STREET}}
+        <div id="parkType">{{typeName}}</div>
+    </div>
+    <div id="suburb">{{info.SUBURB}}</div>
+    
+    <div id="costAndOcc">
+        <div id="parkCost"><b>{{parkCost}}</b></div>
+        {{parkOcc}}
+    </div>
+
+    <div id="freeMins"><b>{{freeMins}}</b></div>
+
+    <div class="sectionTitle">Payment Method:</div>
+    <div>{{paymentMethod}}</div>
+
+    <div class="sectionTitle">Bays Available:</div>
+    <div id="bays">
+        <img src="images/car.png" width="50" height="50">
+        <div id="vehBays">{{info.VEH_BAYS}}</div>
+        <img src="images/bike.png" width="84" height="50">
+        <div id="mcBays">{{info.MC_BAYS}}</div>
+    </div>
+    
+    <div class="sectionTitle">Restrictions:</div>
+    <div>{{restrictions}}</div>
+
+    <div class="sectionTitle">Location Description:</div>
+    <div>{{info.LOC_DESC}}</div>
+
+    <div class="sectionTitle">Operational Times:</div>
+    <div id="operationalTimes">
+        <div>{{info.OPERATIONAL_DAY}}</div>
+        <div id="times">{{info.OPERATIONAL_TIME}}</div>
+    </div>
+
+    <div class="sectionTitle">Max Stay Time:</div>
+    <div>{{info.MAX_STAY_HRS}} hours</div>
+
+    <div class="sectionTitle">Hourly Costs:</div>
+    <table id="costInfo">
+        <tr>
+            <th>
+                Weekdays 7am-7pm
+                <br><br>
+            </th>
+            <td>
+                {{costWeekday}}
+            </td>
+        </tr>
+        <tr>
+            <th>
+                Weekdays 7pm-10pm
+                <br><br>
+            </th>
+            <td>
+                {{costAH}}
+            </td>
+        </tr>
+        <tr>
+            <th>
+                Weekends 7am-7pm
+                <br><br>
+            </th>
+            <td>
+                {{costAH}}
+            </td>
+        </tr>
+        <tr>
+            <th>
+                Motorcycles
+                <br><br>
+            </th>
+            <td>
+                {{costBikes}}
+            </td>
+        </tr>
+    </table>
+</div>
+
+<script>
+
+    /////////////////////////////////////MAP/////////////////////////////////////////
+    //these arrays could be imported into a hbs file...
+    let labelsArray = {{{titles}}}
+    let longitudeArray = [{{{longitudes}}}]
+    let latitudeArray = [{{{latitudes}}}]
+
+    //define the type of map or graph the plotly should generate
+    let data = [{
+        type: "scattermapbox",
+        hoverinfo: "text",  //text here refers to the key/value on the next line -- comment this to 'skip' if you don't want hovertext
+        text: labelsArray,
+        lon: longitudeArray,
+        lat: latitudeArray,
+        marker: { color: "rgb(0, 140, 255)", size: 30 }
+    }];
+
+    let layout = {
+        mapbox: {
+            style: "open-street-map",
+            center: {
+                lon: {{{centreLong}}},
+                lat: {{{centreLat}}}
+            },
+            zoom: {{{centreZoom}}}
+        },
+        margin: {
+            l: 0,
+            r: 0,
+            b: 0,
+            t: 0
+        }
+    };
+
+    //execute the plot
+    Plotly.newPlot('map', data, layout)
+
+</script>

@@ -1,0 +1,26 @@
+<div id="uploadTitle">
+    <b>Admin Upload</b>
+</div>
+
+<div id="uploadInstructions">
+    Upload predicted parking occupancy data to the database below.
+    <br><br>NOTE: Please upload a csv file containing valid data.
+</div>
+
+<form action="/upload" method="POST" enctype="multipart/form-data">
+    <div id="buttonsBox">
+        <label for="fileInput" id="chooseFileButton">
+            Choose File
+        </label>
+        <input name="datafile" id="fileInput" type="file">
+
+        <div id="hiderBox"></div>
+        <input name="uploaded" value="uploaded" hidden>
+
+        <button id="uploadButton" type="submit">Upload</button>
+    </div>
+</form>
+
+{{#if confirm}}
+    <p id="confirm"><b>{{confirm}}</b></p>
+{{/if}}
